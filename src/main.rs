@@ -1,8 +1,8 @@
 use scylla::client::execution_profile::ExecutionProfile;
 use scylla::client::session::Session;
 use scylla::client::session_builder::SessionBuilder;
-use scylla::cluster::ClusterState;
 use scylla::cluster::metadata::{Column, ColumnKind, ColumnType, NativeType, Table};
+use scylla::cluster::ClusterState;
 use scylla::deserialize::row::ColumnIterator;
 use scylla::deserialize::value::DeserializeValue;
 use scylla::policies::load_balancing::DefaultPolicy;
@@ -281,7 +281,13 @@ async fn handle(state: &AppState, request: RpcRequest) -> Result<serde_json::Val
             let table_name = extract_table_name(&request.params)?;
             let data = extract_data(&request.params)?;
             let session = state.get_or_connect(&params).await?;
-            insert_record(session.as_ref(), schema_filter.as_deref(), &table_name, &data).await
+            insert_record(
+                session.as_ref(),
+                schema_filter.as_deref(),
+                &table_name,
+                &data,
+            )
+            .await
         }
 
         "update_record" => {
@@ -309,7 +315,14 @@ async fn handle(state: &AppState, request: RpcRequest) -> Result<serde_json::Val
             let table_name = extract_table_name(&request.params)?;
             let (pk_col, pk_val) = extract_pk(&request.params)?;
             let session = state.get_or_connect(&params).await?;
-            delete_record(session.as_ref(), schema_filter.as_deref(), &table_name, &pk_col, &pk_val).await
+            delete_record(
+                session.as_ref(),
+                schema_filter.as_deref(),
+                &table_name,
+                &pk_col,
+                &pk_val,
+            )
+            .await
         }
 
         other => Err(RpcError {
@@ -400,7 +413,9 @@ fn extract_table_name(params: &serde_json::Value) -> Result<String, RpcError> {
         })
 }
 
-fn extract_execute_query_params(params: &serde_json::Value) -> Result<(String, u32, i32), RpcError> {
+fn extract_execute_query_params(
+    params: &serde_json::Value,
+) -> Result<(String, u32, i32), RpcError> {
     let query = params
         .get("query")
         .and_then(|v| v.as_str())
@@ -409,7 +424,11 @@ fn extract_execute_query_params(params: &serde_json::Value) -> Result<(String, u
             code: -32602,
             message: "Missing required param: query".to_string(),
         })?;
-    let page = params.get("page").and_then(|v| v.as_u64()).unwrap_or(1).max(1) as u32;
+    let page = params
+        .get("page")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1)
+        .max(1) as u32;
     let page_size = params
         .get("page_size")
         .and_then(|v| v.as_i64())
@@ -421,10 +440,13 @@ fn extract_execute_query_params(params: &serde_json::Value) -> Result<(String, u
 fn extract_data(
     params: &serde_json::Value,
 ) -> Result<serde_json::Map<String, serde_json::Value>, RpcError> {
-    let data = params.get("data").and_then(|v| v.as_object()).ok_or_else(|| RpcError {
-        code: -32602,
-        message: "\"data\" must be an object of column -> value".to_string(),
-    })?;
+    let data = params
+        .get("data")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| RpcError {
+            code: -32602,
+            message: "\"data\" must be an object of column -> value".to_string(),
+        })?;
     if data.is_empty() {
         return Err(RpcError {
             code: -32602,
@@ -453,7 +475,9 @@ fn extract_pk(params: &serde_json::Value) -> Result<(String, serde_json::Value),
     Ok((pk_col, pk_val))
 }
 
-fn extract_update_fields(params: &serde_json::Value) -> Result<(String, serde_json::Value), RpcError> {
+fn extract_update_fields(
+    params: &serde_json::Value,
+) -> Result<(String, serde_json::Value), RpcError> {
     let col_name = params
         .get("col_name")
         .and_then(|v| v.as_str())
@@ -469,7 +493,10 @@ fn extract_update_fields(params: &serde_json::Value) -> Result<(String, serde_js
     Ok((col_name, new_val))
 }
 
-async fn connect(params: &ConnectionParams, settings: &PluginSettings) -> Result<Session, RpcError> {
+async fn connect(
+    params: &ConnectionParams,
+    settings: &PluginSettings,
+) -> Result<Session, RpcError> {
     let host = params.host.as_deref().unwrap_or("127.0.0.1");
     let port = params.port.unwrap_or(9042);
 
@@ -621,7 +648,9 @@ fn primary_key_columns(table: &Table) -> Vec<&String> {
 }
 
 fn is_primary_key_column(table: &Table, name: &str) -> bool {
-    primary_key_columns(table).iter().any(|c| c.as_str() == name)
+    primary_key_columns(table)
+        .iter()
+        .any(|c| c.as_str() == name)
 }
 
 // The protocol identifies the row to update/delete with a single
@@ -652,7 +681,9 @@ fn require_single_column_primary_key<'a>(
     if actual != pk_col {
         return Err(RpcError {
             code: -32602,
-            message: format!("\"{pk_col}\" is not the primary key of \"{table_name}\" (it's \"{actual}\")"),
+            message: format!(
+                "\"{pk_col}\" is not the primary key of \"{table_name}\" (it's \"{actual}\")"
+            ),
         });
     }
     Ok(actual)
@@ -978,7 +1009,9 @@ async fn update_record(
     bindings.insert("new_val".to_string(), new_cql_value);
     bindings.insert("pk_val".to_string(), pk_cql_value);
 
-    let cql = format!("UPDATE {keyspace}.{table_name} SET {col_name} = :new_val WHERE {pk_col} = :pk_val");
+    let cql = format!(
+        "UPDATE {keyspace}.{table_name} SET {col_name} = :new_val WHERE {pk_col} = :pk_val"
+    );
     let statement = Statement::new(cql);
     session
         .query_unpaged(statement, bindings)
@@ -1072,7 +1105,11 @@ fn rows_result_to_json(
                         raw_column.spec.name()
                     ),
                 })?;
-            values.push(value.map(cql_value_to_json).unwrap_or(serde_json::Value::Null));
+            values.push(
+                value
+                    .map(cql_value_to_json)
+                    .unwrap_or(serde_json::Value::Null),
+            );
         }
         rows.push(values);
     }
@@ -1177,29 +1214,60 @@ fn json_to_cql_value(
     };
 
     let cql_value = match native {
-        NativeType::Text | NativeType::Ascii => {
-            CqlValue::Text(value.as_str().ok_or_else(|| type_mismatch("a string", value))?.to_string())
-        }
-        NativeType::Boolean => CqlValue::Boolean(value.as_bool().ok_or_else(|| type_mismatch("a boolean", value))?),
-        NativeType::Int => CqlValue::Int(value.as_i64().ok_or_else(|| type_mismatch("a number", value))? as i32),
-        NativeType::BigInt => CqlValue::BigInt(value.as_i64().ok_or_else(|| type_mismatch("a number", value))?),
-        NativeType::SmallInt => {
-            CqlValue::SmallInt(value.as_i64().ok_or_else(|| type_mismatch("a number", value))? as i16)
-        }
-        NativeType::TinyInt => {
-            CqlValue::TinyInt(value.as_i64().ok_or_else(|| type_mismatch("a number", value))? as i8)
-        }
-        NativeType::Float => CqlValue::Float(value.as_f64().ok_or_else(|| type_mismatch("a number", value))? as f32),
-        NativeType::Double => CqlValue::Double(value.as_f64().ok_or_else(|| type_mismatch("a number", value))?),
+        NativeType::Text | NativeType::Ascii => CqlValue::Text(
+            value
+                .as_str()
+                .ok_or_else(|| type_mismatch("a string", value))?
+                .to_string(),
+        ),
+        NativeType::Boolean => CqlValue::Boolean(
+            value
+                .as_bool()
+                .ok_or_else(|| type_mismatch("a boolean", value))?,
+        ),
+        NativeType::Int => CqlValue::Int(
+            value
+                .as_i64()
+                .ok_or_else(|| type_mismatch("a number", value))? as i32,
+        ),
+        NativeType::BigInt => CqlValue::BigInt(
+            value
+                .as_i64()
+                .ok_or_else(|| type_mismatch("a number", value))?,
+        ),
+        NativeType::SmallInt => CqlValue::SmallInt(
+            value
+                .as_i64()
+                .ok_or_else(|| type_mismatch("a number", value))? as i16,
+        ),
+        NativeType::TinyInt => CqlValue::TinyInt(
+            value
+                .as_i64()
+                .ok_or_else(|| type_mismatch("a number", value))? as i8,
+        ),
+        NativeType::Float => CqlValue::Float(
+            value
+                .as_f64()
+                .ok_or_else(|| type_mismatch("a number", value))? as f32,
+        ),
+        NativeType::Double => CqlValue::Double(
+            value
+                .as_f64()
+                .ok_or_else(|| type_mismatch("a number", value))?,
+        ),
         NativeType::Blob => {
-            let s = value.as_str().ok_or_else(|| type_mismatch("a hex string", value))?;
+            let s = value
+                .as_str()
+                .ok_or_else(|| type_mismatch("a hex string", value))?;
             CqlValue::Blob(hex_decode(s).map_err(|e| RpcError {
                 code: -32602,
                 message: format!("Invalid hex blob: {e}"),
             })?)
         }
         NativeType::Uuid => {
-            let s = value.as_str().ok_or_else(|| type_mismatch("a UUID string", value))?;
+            let s = value
+                .as_str()
+                .ok_or_else(|| type_mismatch("a UUID string", value))?;
             let uuid = Uuid::parse_str(s).map_err(|e| RpcError {
                 code: -32602,
                 message: format!("Invalid UUID \"{s}\": {e}"),
@@ -1209,7 +1277,10 @@ fn json_to_cql_value(
         other => {
             return Err(RpcError {
                 code: -32602,
-                message: format!("Writing column type \"{}\" isn't supported yet", native_type_name(other)),
+                message: format!(
+                    "Writing column type \"{}\" isn't supported yet",
+                    native_type_name(other)
+                ),
             })
         }
     };
