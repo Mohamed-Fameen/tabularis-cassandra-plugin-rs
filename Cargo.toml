@@ -2,6 +2,9 @@
 name = "tabularis-cassandra-plugin"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/TabularisDB/tabularis-cassandra-plugin"
+description = "Tabularis driver plugin for Apache Cassandra and ScyllaDB over CQL."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

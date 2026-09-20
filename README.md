@@ -6,8 +6,8 @@ and **ScyllaDB**, written in Rust against ScyllaDB's own
 against the [Cassandra/ScyllaDB plugin bounty](https://tabularis.dev/plugins/bounties):
 keyspaces, tables, paged CQL queries, and row editing.
 
-This is a Rust rewrite of an earlier Java+GraalVM implementation
-([tabularis-cassandra-plugin](https://github.com/Mohamed-Fameen/tabularis-cassandra-plugin)),
+This is a Rust rewrite of an earlier Java+GraalVM prototype
+([tabularis-cassandra-plugin (Java)](https://github.com/Mohamed-Fameen/tabularis-cassandra-plugin)),
 switched to for ScyllaDB's own shard-aware/tablet-aware driver, native
 compilation with no reflection-metadata step, and a lighter runtime.
 
@@ -23,11 +23,15 @@ Implements:
 - **Querying**: `execute_query` with CQL-native forward paging (see below)
 - **Row editing**: `insert_record`, `update_record`, `delete_record` (single-
   column primary keys only - see "Known limitations")
+- **CI and release automation**: every push runs a full functional smoke test
+  against a real Cassandra service container; tagged releases build and
+  publish per-platform binaries (Linux x86_64/aarch64, macOS x86_64/aarch64,
+  Windows x86_64) via GitHub Actions
+- **Verified against real ScyllaDB**, not just Cassandra: the full protocol
+  surface has been exercised end-to-end against an actual ScyllaDB container,
+  in addition to Cassandra
 
-Not yet implemented: TLS, a cross-platform release workflow (CI builds and
-tests on every push, but there's no tagged-release automation yet), and
-testing against a real ScyllaDB cluster (everything so far has only been run
-against Cassandra). See "Known limitations" and "Roadmap" below.
+Not yet implemented: TLS. See "Known limitations" and "Roadmap" below.
 
 ## Why Cassandra and ScyllaDB share one plugin
 
@@ -40,7 +44,8 @@ duplicating a second plugin.
 **Cassandra vs ScyllaDB, concretely:**
 
 - Connection settings, schema discovery, querying, and row editing all work
-  identically against both.
+  identically against both - confirmed directly against real Cassandra and
+  real ScyllaDB containers, not just assumed from protocol compatibility.
 - ScyllaDB additionally supports *shard-aware* and *tablet-aware* routing for
   lower tail latency under load. This plugin does not implement shard-aware
   routing yet - the `scylla_shard_aware` connection setting is currently
@@ -67,6 +72,17 @@ cargo clippy --all-targets --all-features -- -D warnings   # lint, matches CI
 
 CI (`.github/workflows/ci.yml`) runs all of the above plus a full functional
 smoke test against a real Cassandra service container on every push.
+Tagged pushes (`vX.Y.Z`) additionally trigger `.github/workflows/release.yml`,
+which cross-compiles a binary for each supported platform and publishes them,
+plus a per-platform `.tabularium`, as GitHub Release assets.
+
+## Installing a release build
+
+Download the zip for your platform from the
+[latest release](https://github.com/TabularisDB/tabularis-cassandra-plugin/releases/latest),
+which contains the built binary and a matching `.tabularium`. Extract both
+into Tabularis's plugin directory and restart Tabularis (or reload plugins
+from Settings).
 
 ## Installing locally for development
 
@@ -97,6 +113,10 @@ cargo build
 ./scripts/exercise-plugin.sh            # against the debug build
 ./scripts/exercise-plugin.sh --release  # against a release build (cargo build --release first)
 ```
+
+The same script has also been run unmodified against a real ScyllaDB
+container (`docker run --name scylla -p 9042:9042 -d scylladb/scylla --smp 1
+--memory 750M --overprovisioned 1 --broadcast-rpc-address 127.0.0.1`).
 
 You can also drive a single request by hand:
 
@@ -151,9 +171,6 @@ true total until the query is actually exhausted.
 - **Secondary index columns** are reported using CQL's raw index target
   expression (e.g. `values(tags)`) rather than a parsed column list, since
   CQL index targets are expressions, not always plain columns.
-- **Only tested against Cassandra so far** - ScyllaDB should work identically
-  (same wire protocol), but hasn't been verified against a real ScyllaDB
-  cluster yet.
 
 ## Configuration (`.tabularium` settings)
 
@@ -166,13 +183,17 @@ true total until the query is actually exhausted.
 
 ## Roadmap
 
-- Cross-platform release workflow (`.github/workflows/release.yml`), mirroring
-  the Java version's tag-triggered, multi-platform binary build.
-- Verification against a real ScyllaDB cluster.
-- `v0.1.0` tag and submission to [registry.tabularis.dev/submit](https://registry.tabularis.dev/submit).
 - TLS support (`rustls`, most likely).
 - Wider read/write type coverage (see "Known limitations").
+- Shard-aware ScyllaDB routing.
+
+## Contributing
+
+Bug reports and pull requests are welcome - please open an issue first for
+anything beyond a small fix. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+for community expectations and [CHANGELOG.md](CHANGELOG.md) for release
+history.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+Apache License 2.0 - see [LICENSE](LICENSE).
